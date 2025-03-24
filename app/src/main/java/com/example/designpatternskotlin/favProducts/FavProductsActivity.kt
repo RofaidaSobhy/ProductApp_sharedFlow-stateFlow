@@ -7,15 +7,18 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -23,6 +26,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -35,6 +39,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi
 import com.bumptech.glide.integration.compose.GlideImage
 import com.example.designpatternskotlin.allProducts.AllProductsFactory
@@ -42,10 +47,12 @@ import com.example.designpatternskotlin.allProducts.AllProductsViewModel
 import com.example.designpatternskotlin.data.local.ProductDatabase
 import com.example.designpatternskotlin.data.local.ProductLocalDataSourceImpl
 import com.example.designpatternskotlin.data.models.Product
+import com.example.designpatternskotlin.data.models.Response
 import com.example.designpatternskotlin.data.remote.ProductsRemoteDataSourceImpl
 import com.example.designpatternskotlin.data.remote.RetrofitHelper
 import com.example.designpatternskotlin.data.repo.ProductRepositoryImpl
 import com.example.designpatternskotlin.favProducts.ui.theme.DesignPatternsKotlinTheme
+import kotlinx.coroutines.flow.filter
 
 class FavProductsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,45 +76,72 @@ class FavProductsActivity : ComponentActivity() {
 @Composable
 private fun FavProductsScreen(viewModel: FavProductsViewModel) {
     viewModel.getProducts()
-    val productsState = viewModel.products.observeAsState()
-    val messageState = viewModel.message.observeAsState()
-    val snackBarHostState = remember{ SnackbarHostState() }
-    Scaffold (
-        snackbarHost = { SnackbarHost(snackBarHostState) }
-    ){ contentPadding ->
-        Column(
-            modifier= Modifier
-                .fillMaxSize()
-                .padding(contentPadding)
-                .padding(16.dp)
-            , verticalArrangement = Arrangement.Center
-        ){
-            LazyColumn {
-                items(productsState.value?.size ?: 0){
-                        it : Int ->
+    val productsState by viewModel.products.collectAsStateWithLifecycle()
+    val snackBarHostState = remember{SnackbarHostState()}
 
-                    ProductRow(productsState.value?.get(it)
-                        ,  "Remove"
-                        , {
-                            viewModel.removeFromFavorites(productsState.value?.get(it))
-                           // viewModel.getProducts()
+    LaunchedEffect(Unit) {
+        viewModel.message
+            .filter { message -> message.isNotBlank() }
+            .collect{
+                    message ->
+                snackBarHostState.showSnackbar(
+                    message = message
+                    , duration = SnackbarDuration.Short
+                )
+            }
+    }
+
+    when(productsState) {
+        is Response.Loading -> {
+            LoadingIndicator()
+        }
+
+        is Response.Success -> {
+            Scaffold (
+                snackbarHost = { SnackbarHost(snackBarHostState) }
+            ){ contentPadding ->
+                Column(
+                    modifier= Modifier
+                        .fillMaxSize()
+                        .padding(contentPadding)
+                        .padding(16.dp)
+                    , verticalArrangement = Arrangement.Center
+                ){
+                    LazyColumn {
+                        items((productsState as Response.Success).data?.size ?: 0){
+                                it : Int ->
+
+                            ProductRow((productsState as Response.Success).data?.get(it)
+                                ,  "Remove"
+                                , {
+                                    viewModel.removeFromFavorites((productsState as Response.Success).data?.get(it))
+
+                                }
+                            )
+
+
                         }
-                    )
-
+                    }
 
                 }
+
             }
-            LaunchedEffect(messageState.value) {
-                if(!messageState.value.isNullOrBlank()){
-                    snackBarHostState.showSnackbar(
-                        message = messageState.value.toString()
-                        , duration = SnackbarDuration.Short
-                    )
-                }
-            }
+
+        }
+        is Response.Failure -> {
+            Text(
+                text = "Sorry, we can't show the products now",
+                modifier = Modifier
+                    .fillMaxSize()
+                    .wrapContentSize(),
+                fontSize = 22.sp
+
+
+            )
         }
 
     }
+
 }
 
 //@Preview
@@ -155,4 +189,17 @@ private fun ProductRow(product: Product?, actionName:String, action: () -> Unit 
         }
 
     }
+}
+
+@Preview
+@Composable
+private fun LoadingIndicator() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .wrapContentSize()
+    ){
+        CircularProgressIndicator()
+    }
+
 }

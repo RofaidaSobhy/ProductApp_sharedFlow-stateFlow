@@ -7,56 +7,69 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.designpatternskotlin.allProducts.AllProductsViewModel
 import com.example.designpatternskotlin.data.models.Product
+import com.example.designpatternskotlin.data.models.Response
 import com.example.designpatternskotlin.data.repo.ProductRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
 class FavProductsViewModel (private val repo : ProductRepository) : ViewModel(){
-    private val mutableProducts: MutableLiveData<List<Product>> = MutableLiveData<List<Product>>()
-    val products : LiveData<List<Product>> = mutableProducts
+    private val mutableProducts = MutableStateFlow<Response>(Response.Loading)
+    val products = mutableProducts.asStateFlow()
 
-    private val mutableMessage: MutableLiveData<String> = MutableLiveData<String>()
-    val message:LiveData<String> = mutableMessage
+    private val mutableMessage= MutableSharedFlow<String>()
+    val message = mutableMessage.asSharedFlow()
 
     fun getProducts(){
-        try{
-            viewModelScope.launch (Dispatchers.IO){
+        viewModelScope.launch (Dispatchers.IO) {
+
+            try {
                 val result = repo.getAllProducts(false)
-                if(result != null){
+                if (result != null) {
                     //val products : List<Product> = result
                     result
-                        .collect{
-                            mutableProducts.postValue(it)
+                        .catch { ex ->
+                            mutableProducts.value = Response.Failure(ex)
+                            mutableMessage.emit("Error From Local: ${ex.message}")
+                        }
+                        .collect {
+                            mutableProducts.value = Response.Success(it)
                         }
 
-                }else{
-                    mutableMessage.postValue("Please try again later")
+                } else {
+                    mutableMessage.emit("Please try again later")
                 }
-            }
-        }catch (ex:Exception){
-            mutableMessage.postValue("An error occurred, ${ex.message} ")
-        }
 
+            } catch (ex: Exception) {
+                mutableProducts.value = Response.Failure(ex)
+                mutableMessage.emit("An error occurred, ${ex.message} ")
+            }
+        }
     }
 
     fun removeFromFavorites(product: Product?){
-        if(product!=null){
-            viewModelScope.launch (Dispatchers.IO){
-                try{
+        viewModelScope.launch (Dispatchers.IO) {
+
+            if (product != null) {
+                try {
                     val result = repo.removeProduct(product)
-                    if(result > 0)
-                    {
-                        mutableMessage.postValue("removed Successfully!")
-                       // getProducts()
-                    }else{
-                        mutableMessage.postValue("Product is not exist in Favorites!")
+                    if (result > 0) {
+                        mutableMessage.emit("removed Successfully!")
+                        // getProducts()
+                    } else {
+                        mutableMessage.emit("Product is not exist in Favorites!")
                     }
-                }catch (ex : Exception){
-                    mutableMessage.postValue("Couldn't remove Product, ${ex.message}")
+                } catch (ex: Exception) {
+                    mutableMessage.emit("Couldn't remove Product, ${ex.message}")
                 }
+
+            } else {
+                mutableMessage.emit("Couldn't remove product, Missing data")
             }
-        }else{
-            mutableMessage.postValue("Couldn't remove product, Missing data")
         }
 
     }
